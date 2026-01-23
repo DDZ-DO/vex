@@ -22,7 +22,7 @@ type Buffer struct {
 	data       []rune
 	gapStart   int
 	gapEnd     int
-	lines      []int  // Cache of line start positions (byte offsets into content)
+	lines      []int // Cache of line start positions (byte offsets into content)
 	modified   bool
 	filepath   string
 	encoding   string
@@ -358,6 +358,11 @@ func (b *Buffer) Save() error {
 // SaveAs writes the buffer content to the specified file.
 func (b *Buffer) SaveAs(filepath string) error {
 	content := b.Content()
+
+	// Ensure file ends with newline (POSIX standard)
+	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
 
 	// Convert line endings if necessary
 	if b.lineEnding == LineEndingCRLF {

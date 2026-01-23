@@ -22,25 +22,25 @@ type StyledLine struct {
 
 // Highlighter provides syntax highlighting using Chroma.
 type Highlighter struct {
-	lexer     chroma.Lexer
-	language  string
-	theme     *Theme
+	lexer    chroma.Lexer
+	language string
+	theme    *Theme
 }
 
 // Theme defines colors for syntax highlighting.
 type Theme struct {
-	Default    lipgloss.Style
-	Keyword    lipgloss.Style
-	Name       lipgloss.Style
-	Function   lipgloss.Style
-	String     lipgloss.Style
-	Number     lipgloss.Style
-	Comment    lipgloss.Style
-	Operator   lipgloss.Style
+	Default     lipgloss.Style
+	Keyword     lipgloss.Style
+	Name        lipgloss.Style
+	Function    lipgloss.Style
+	String      lipgloss.Style
+	Number      lipgloss.Style
+	Comment     lipgloss.Style
+	Operator    lipgloss.Style
 	Punctuation lipgloss.Style
-	Type       lipgloss.Style
-	Error      lipgloss.Style
-	Background lipgloss.Color
+	Type        lipgloss.Style
+	Error       lipgloss.Style
+	Background  lipgloss.Color
 }
 
 // DefaultTheme returns the default syntax highlighting theme.

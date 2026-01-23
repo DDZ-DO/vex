@@ -8,10 +8,10 @@ import (
 // Config holds the editor configuration.
 type Config struct {
 	// Editor settings
-	TabWidth     int    `toml:"tab_width"`
-	InsertSpaces bool   `toml:"insert_spaces"`
-	WordWrap     bool   `toml:"word_wrap"`
-	LineNumbers  bool   `toml:"line_numbers"`
+	TabWidth     int  `toml:"tab_width"`
+	InsertSpaces bool `toml:"insert_spaces"`
+	WordWrap     bool `toml:"word_wrap"`
+	LineNumbers  bool `toml:"line_numbers"`
 
 	// UI settings
 	Theme        string `toml:"theme"`
@@ -19,7 +19,7 @@ type Config struct {
 	ShowSidebar  bool   `toml:"show_sidebar"`
 
 	// File settings
-	AutoSave         bool `toml:"auto_save"`
+	AutoSave               bool `toml:"auto_save"`
 	TrimTrailingWhitespace bool `toml:"trim_trailing_whitespace"`
 	InsertFinalNewline     bool `toml:"insert_final_newline"`
 }

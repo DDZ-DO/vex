@@ -41,3 +41,10 @@ go.work.sum
 # OS files
 .DS_Store
 Thumbs.db
+
+# Binary
+/vex
+
+# Test files
+test.txt
+test2.txt

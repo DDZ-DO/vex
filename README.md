@@ -73,7 +73,7 @@ vex --version
 | Ctrl+V | Paste |
 | Ctrl+A | Select all |
 | Ctrl+D | Duplicate line |
-| Ctrl+Shift+K | Delete line |
+| Ctrl+L | Delete line |
 | Ctrl+L | Select line |
 | Alt+Up/Down | Move line up/down |
 

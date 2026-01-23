@@ -22,23 +22,28 @@ vex is built using the Bubble Tea TUI framework with a component-based architect
 │                          App                                 │
 │  (Orchestrates all components, handles global state)         │
 ├─────────────────────────────────────────────────────────────┤
+│  ┌────────────┐  ┌────────────────────────────────────────┐ │
+│  │  TitleBar  │  │               TabBar                    │ │
+│  └────────────┘  └────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────────────┐  ┌──────────────────────────────────────┐ │
 │  │   Sidebar    │  │              Editor                   │ │
 │  │              │  │                                       │ │
-│  │  ┌────────┐  │  │  ┌─────────┐ ┌─────────┐ ┌────────┐ │ │
-│  │  │FileTree│  │  │  │ Buffer  │ │ Cursor  │ │History │ │ │
-│  │  └────────┘  │  │  └─────────┘ └─────────┘ └────────┘ │ │
-│  │              │  │                                       │ │
-│  │              │  │  ┌─────────────┐  ┌────────────────┐ │ │
-│  │              │  │  │  Selection  │  │  Highlighter   │ │ │
-│  │              │  │  └─────────────┘  └────────────────┘ │ │
+│  │  ┌────────┐  │  │  ┌────────────────────────────────┐ │ │
+│  │  │FileTree│  │  │  │          TabManager            │ │ │
+│  │  └────────┘  │  │  │  ┌──────────────────────────┐ │ │ │
+│  │              │  │  │  │       TabState(s)        │ │ │ │
+│  │              │  │  │  │ Buffer, Cursor, Selection│ │ │ │
+│  │              │  │  │  │ History, Highlighter     │ │ │ │
+│  │              │  │  │  └──────────────────────────┘ │ │ │
+│  │              │  │  └────────────────────────────────┘ │ │
 │  └──────────────┘  └──────────────────────────────────────┘ │
 │                                                              │
 ├─────────────────────────────────────────────────────────────┤
-│  ┌────────────┐  ┌───────────────┐  ┌─────────────────────┐ │
-│  │  TitleBar  │  │  CommandPalette│  │     SearchBar     │ │
-│  └────────────┘  └───────────────┘  └─────────────────────┘ │
+│  ┌───────────────┐  ┌─────────────────────┐                  │
+│  │CommandPalette │  │     SearchBar       │                  │
+│  └───────────────┘  └─────────────────────┘                  │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │                      StatusBar                          │ │
 │  └────────────────────────────────────────────────────────┘ │
@@ -91,10 +96,30 @@ Implements undo/redo with:
 - Configurable stack size
 - Cursor position restoration
 
+### TabState (`internal/editor/tabstate.go`)
+
+Encapsulates all state for a single open file:
+- Buffer (file content)
+- Cursor position
+- Selection state
+- Undo/redo history
+- Syntax highlighter
+- Scroll position (X/Y)
+
+### TabManager (`internal/editor/tabmanager.go`)
+
+Manages multiple open tabs:
+- Tab list and active tab tracking
+- Add/close/switch tabs
+- Find tabs by file path
+- Track modified tabs
+- Save all functionality
+
 ### Editor (`internal/editor/editor.go`)
 
 The main editing component that coordinates:
-- Buffer operations
+- TabManager for multi-file editing
+- Buffer operations (delegated to active tab)
 - Cursor movement
 - Selection management
 - History tracking
@@ -114,6 +139,12 @@ Chroma-based syntax highlighting:
 ### TitleBar (`internal/ui/titlebar.go`)
 - Displays filename and modified indicator
 - Centered title with app name
+
+### TabBar (`internal/ui/tabbar.go`)
+- Horizontal tab display (shown when multiple tabs open)
+- Tab name with modified indicator (●)
+- Active tab highlighting
+- Click to switch tabs
 
 ### StatusBar (`internal/ui/statusbar.go`)
 - Cursor position (line, column)
@@ -191,7 +222,6 @@ Following the Elm architecture:
 
 ## Future Improvements
 
-- Multiple buffers/tabs
 - Split views
 - Language server protocol (LSP) support
 - Plugin system

@@ -9,12 +9,12 @@ type Action string
 
 const (
 	// File actions
-	ActionSave      Action = "file.save"
-	ActionSaveAs    Action = "file.saveAs"
-	ActionNew       Action = "file.new"
-	ActionOpen      Action = "file.open"
-	ActionClose     Action = "file.close"
-	ActionQuit      Action = "app.quit"
+	ActionSave   Action = "file.save"
+	ActionSaveAs Action = "file.saveAs"
+	ActionNew    Action = "file.new"
+	ActionOpen   Action = "file.open"
+	ActionClose  Action = "file.close"
+	ActionQuit   Action = "app.quit"
 
 	// Edit actions
 	ActionUndo          Action = "edit.undo"
@@ -29,30 +29,30 @@ const (
 	ActionMoveLineDown  Action = "edit.moveLineDown"
 
 	// Navigation actions
-	ActionMoveLeft       Action = "nav.moveLeft"
-	ActionMoveRight      Action = "nav.moveRight"
-	ActionMoveUp         Action = "nav.moveUp"
-	ActionMoveDown       Action = "nav.moveDown"
-	ActionMoveWordLeft   Action = "nav.moveWordLeft"
-	ActionMoveWordRight  Action = "nav.moveWordRight"
-	ActionMoveLineStart  Action = "nav.moveLineStart"
-	ActionMoveLineEnd    Action = "nav.moveLineEnd"
+	ActionMoveLeft        Action = "nav.moveLeft"
+	ActionMoveRight       Action = "nav.moveRight"
+	ActionMoveUp          Action = "nav.moveUp"
+	ActionMoveDown        Action = "nav.moveDown"
+	ActionMoveWordLeft    Action = "nav.moveWordLeft"
+	ActionMoveWordRight   Action = "nav.moveWordRight"
+	ActionMoveLineStart   Action = "nav.moveLineStart"
+	ActionMoveLineEnd     Action = "nav.moveLineEnd"
 	ActionMoveBufferStart Action = "nav.moveBufferStart"
-	ActionMoveBufferEnd  Action = "nav.moveBufferEnd"
-	ActionPageUp         Action = "nav.pageUp"
-	ActionPageDown       Action = "nav.pageDown"
-	ActionGoToLine       Action = "nav.goToLine"
+	ActionMoveBufferEnd   Action = "nav.moveBufferEnd"
+	ActionPageUp          Action = "nav.pageUp"
+	ActionPageDown        Action = "nav.pageDown"
+	ActionGoToLine        Action = "nav.goToLine"
 
 	// Selection actions
-	ActionSelectLeft       Action = "select.left"
-	ActionSelectRight      Action = "select.right"
-	ActionSelectUp         Action = "select.up"
-	ActionSelectDown       Action = "select.down"
-	ActionSelectWordLeft   Action = "select.wordLeft"
-	ActionSelectWordRight  Action = "select.wordRight"
-	ActionSelectLineStart  Action = "select.lineStart"
-	ActionSelectLineEnd    Action = "select.lineEnd"
-	ActionSelectLine       Action = "select.line"
+	ActionSelectLeft      Action = "select.left"
+	ActionSelectRight     Action = "select.right"
+	ActionSelectUp        Action = "select.up"
+	ActionSelectDown      Action = "select.down"
+	ActionSelectWordLeft  Action = "select.wordLeft"
+	ActionSelectWordRight Action = "select.wordRight"
+	ActionSelectLineStart Action = "select.lineStart"
+	ActionSelectLineEnd   Action = "select.lineEnd"
+	ActionSelectLine      Action = "select.line"
 
 	// Search actions
 	ActionFind         Action = "search.find"
@@ -61,8 +61,15 @@ const (
 	ActionReplace      Action = "search.replace"
 
 	// View actions
-	ActionToggleSidebar   Action = "view.toggleSidebar"
-	ActionCommandPalette  Action = "view.commandPalette"
+	ActionToggleSidebar  Action = "view.toggleSidebar"
+	ActionCommandPalette Action = "view.commandPalette"
+	ActionFocusExplorer  Action = "view.focusExplorer"
+
+	// Tab actions
+	ActionNextTab  Action = "tab.next"
+	ActionPrevTab  Action = "tab.prev"
+	ActionCloseTab Action = "tab.close"
+	ActionSaveAll  Action = "file.saveAll"
 
 	// Text input
 	ActionInsertNewline Action = "insert.newline"
@@ -101,10 +108,15 @@ func (kb *KeyBindings) loadDefaults() {
 	kb.bindings = []Binding{
 		// File operations
 		{Key: tea.KeyCtrlS, Action: ActionSave},
+		{Key: tea.KeyF6, Action: ActionSaveAll},
 		{Key: tea.KeyCtrlN, Action: ActionNew},
 		{Key: tea.KeyCtrlO, Action: ActionOpen},
-		{Key: tea.KeyCtrlW, Action: ActionClose},
+		{Key: tea.KeyCtrlW, Action: ActionCloseTab},
 		{Key: tea.KeyCtrlQ, Action: ActionQuit},
+
+		// Tab navigation (F7/F8 for tab switching)
+		{Key: tea.KeyF7, Action: ActionPrevTab},
+		{Key: tea.KeyF8, Action: ActionNextTab},
 
 		// Edit operations
 		{Key: tea.KeyCtrlZ, Action: ActionUndo},
@@ -114,8 +126,7 @@ func (kb *KeyBindings) loadDefaults() {
 		{Key: tea.KeyCtrlV, Action: ActionPaste},
 		{Key: tea.KeyCtrlA, Action: ActionSelectAll},
 		{Key: tea.KeyCtrlD, Action: ActionDuplicateLine},
-		{Key: tea.KeyCtrlK, Ctrl: true, Shift: true, Action: ActionDeleteLine},
-		{Key: tea.KeyCtrlL, Action: ActionSelectLine},
+		{Key: tea.KeyCtrlL, Action: ActionDeleteLine},
 
 		// Navigation
 		{Key: tea.KeyLeft, Action: ActionMoveLeft},
@@ -150,6 +161,7 @@ func (kb *KeyBindings) loadDefaults() {
 		// View
 		{Key: tea.KeyCtrlB, Action: ActionToggleSidebar},
 		{Key: tea.KeyCtrlP, Action: ActionCommandPalette},
+		{Key: tea.KeyCtrlE, Action: ActionFocusExplorer},
 
 		// Text input
 		{Key: tea.KeyEnter, Action: ActionInsertNewline},
@@ -178,9 +190,17 @@ func (kb *KeyBindings) matches(binding Binding, msg tea.KeyMsg) bool {
 		return true
 	}
 
-	// Check runes
-	if binding.Runes != "" && msg.String() == binding.Runes {
-		return true
+	// Check runes with modifiers
+	if binding.Runes != "" {
+		runeMatch := false
+		if msg.Type == tea.KeyRunes && string(msg.Runes) == binding.Runes {
+			runeMatch = true
+		}
+
+		// Check Alt modifier
+		if runeMatch && binding.Alt == msg.Alt {
+			return true
+		}
 	}
 
 	return false

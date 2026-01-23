@@ -8,10 +8,18 @@ vex uses VSCode-style keybindings for a familiar editing experience. All shortcu
 |----------|--------|-------------|
 | Ctrl+S | Save | Save current file |
 | Ctrl+Shift+S | Save As | Save to new file |
-| Ctrl+N | New | Create new file |
-| Ctrl+O | Open | Open file |
-| Ctrl+W | Close | Close current file |
+| Ctrl+N | New | Create new file/tab |
+| Ctrl+O | Open | Open file in new tab |
+| Ctrl+W | Close Tab | Close current tab |
 | Ctrl+Q | Quit | Exit editor |
+
+## Tab Navigation
+
+| Shortcut | Action | Description |
+|----------|--------|-------------|
+| F8 | Next Tab | Switch to next tab |
+| F7 | Previous Tab | Switch to previous tab |
+| Ctrl+W | Close Tab | Close current tab |
 
 ## Editing
 
@@ -25,8 +33,7 @@ vex uses VSCode-style keybindings for a familiar editing experience. All shortcu
 | Ctrl+V | Paste | Paste from clipboard |
 | Ctrl+A | Select All | Select entire document |
 | Ctrl+D | Duplicate | Duplicate line or selection |
-| Ctrl+L | Select Line | Select current line |
-| Ctrl+Shift+K | Delete Line | Delete current line |
+| Ctrl+L | Delete Line | Delete current line |
 | Tab | Indent | Insert tab/spaces |
 | Shift+Tab | Outdent | Remove indentation |
 

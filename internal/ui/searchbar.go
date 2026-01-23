@@ -14,6 +14,8 @@ const (
 	SearchModeFind SearchMode = iota
 	SearchModeReplace
 	SearchModeGoToLine
+	SearchModeSaveAs
+	SearchModeOpen
 )
 
 // SearchBar provides find and replace functionality.
@@ -104,6 +106,22 @@ func (s *SearchBar) ShowReplace() {
 func (s *SearchBar) ShowGoToLine() {
 	s.visible = true
 	s.mode = SearchModeGoToLine
+	s.searchInput = ""
+	s.cursorPos = 0
+}
+
+// ShowSaveAs shows the search bar in save-as mode.
+func (s *SearchBar) ShowSaveAs(currentPath string) {
+	s.visible = true
+	s.mode = SearchModeSaveAs
+	s.searchInput = currentPath
+	s.cursorPos = len(currentPath)
+}
+
+// ShowOpen shows the search bar in open-file mode.
+func (s *SearchBar) ShowOpen() {
+	s.visible = true
+	s.mode = SearchModeOpen
 	s.searchInput = ""
 	s.cursorPos = 0
 }
@@ -236,6 +254,14 @@ func (s *SearchBar) LineNumber() int {
 	return n
 }
 
+// FilePath returns the entered file path (for save-as and open modes).
+func (s *SearchBar) FilePath() string {
+	if s.mode != SearchModeSaveAs && s.mode != SearchModeOpen {
+		return ""
+	}
+	return s.searchInput
+}
+
 // View renders the search bar.
 func (s *SearchBar) View() string {
 	if !s.visible {
@@ -247,6 +273,10 @@ func (s *SearchBar) View() string {
 		return s.renderGoToLine()
 	case SearchModeReplace:
 		return s.renderReplace()
+	case SearchModeSaveAs:
+		return s.renderSaveAs()
+	case SearchModeOpen:
+		return s.renderOpen()
 	default:
 		return s.renderFind()
 	}
@@ -360,6 +390,42 @@ func (s *SearchBar) renderGoToLine() string {
 	parts = append(parts, s.inputStyle.Width(10).Render(input))
 
 	parts = append(parts, s.labelStyle.Render("  Enter: Go  Esc: Cancel"))
+
+	content := strings.Join(parts, " ")
+	return s.barStyle.Width(s.width).Render(content)
+}
+
+// renderSaveAs renders the save-as bar.
+func (s *SearchBar) renderSaveAs() string {
+	var parts []string
+
+	parts = append(parts, s.labelStyle.Render("Speichern unter:"))
+
+	input := s.searchInput
+	if s.cursorPos <= len(input) {
+		input = input[:s.cursorPos] + "|" + input[s.cursorPos:]
+	}
+	parts = append(parts, s.inputStyle.Width(40).Render(input))
+
+	parts = append(parts, s.labelStyle.Render("  Enter: Speichern  Esc: Abbrechen"))
+
+	content := strings.Join(parts, " ")
+	return s.barStyle.Width(s.width).Render(content)
+}
+
+// renderOpen renders the open-file bar.
+func (s *SearchBar) renderOpen() string {
+	var parts []string
+
+	parts = append(parts, s.labelStyle.Render("Datei öffnen:"))
+
+	input := s.searchInput
+	if s.cursorPos <= len(input) {
+		input = input[:s.cursorPos] + "|" + input[s.cursorPos:]
+	}
+	parts = append(parts, s.inputStyle.Width(40).Render(input))
+
+	parts = append(parts, s.labelStyle.Render("  Enter: Öffnen  Esc: Abbrechen"))
 
 	content := strings.Join(parts, " ")
 	return s.barStyle.Width(s.width).Render(content)

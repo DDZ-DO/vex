@@ -18,24 +18,24 @@ type Command struct {
 
 // CommandPalette provides a fuzzy-searchable command palette.
 type CommandPalette struct {
-	visible     bool
-	input       string
-	cursorPos   int
-	commands    []Command
-	filtered    []Command
-	selected    int
+	visible      bool
+	input        string
+	cursorPos    int
+	commands     []Command
+	filtered     []Command
+	selected     int
 	scrollOffset int
 
 	width  int
 	height int
 
 	// Styles
-	overlayStyle   lipgloss.Style
-	inputStyle     lipgloss.Style
-	itemStyle      lipgloss.Style
-	selectedStyle  lipgloss.Style
-	keybindStyle   lipgloss.Style
-	categoryStyle  lipgloss.Style
+	overlayStyle  lipgloss.Style
+	inputStyle    lipgloss.Style
+	itemStyle     lipgloss.Style
+	selectedStyle lipgloss.Style
+	keybindStyle  lipgloss.Style
+	categoryStyle lipgloss.Style
 }
 
 // NewCommandPalette creates a new command palette.
@@ -46,8 +46,7 @@ func NewCommandPalette() *CommandPalette {
 		overlayStyle: lipgloss.NewStyle().
 			Background(lipgloss.Color("236")).
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("62")).
-			Padding(0, 1),
+			BorderForeground(lipgloss.Color("62")),
 		inputStyle: lipgloss.NewStyle().
 			Background(lipgloss.Color("238")).
 			Foreground(lipgloss.Color("252")).
@@ -84,7 +83,7 @@ func defaultCommands() []Command {
 		{ID: "edit.paste", Label: "Paste", Category: "Edit", Keybinding: "Ctrl+V"},
 		{ID: "edit.selectAll", Label: "Select All", Category: "Edit", Keybinding: "Ctrl+A"},
 		{ID: "edit.duplicateLine", Label: "Duplicate Line", Category: "Edit", Keybinding: "Ctrl+D"},
-		{ID: "edit.deleteLine", Label: "Delete Line", Category: "Edit", Keybinding: "Ctrl+Shift+K"},
+		{ID: "edit.deleteLine", Label: "Delete Line", Category: "Edit", Keybinding: "Ctrl+L"},
 		{ID: "edit.moveLineUp", Label: "Move Line Up", Category: "Edit", Keybinding: "Alt+Up"},
 		{ID: "edit.moveLineDown", Label: "Move Line Down", Category: "Edit", Keybinding: "Alt+Down"},
 
@@ -284,13 +283,8 @@ func (cp *CommandPalette) View() string {
 		return ""
 	}
 
-	paletteWidth := cp.width - 20
-	if paletteWidth > 60 {
-		paletteWidth = 60
-	}
-	if paletteWidth < 40 {
-		paletteWidth = 40
-	}
+	// Fixed content width
+	contentWidth := 50
 
 	var lines []string
 
@@ -301,11 +295,21 @@ func (cp *CommandPalette) View() string {
 	} else {
 		inputLine += "|"
 	}
-	prompt := "> " + inputLine
-	lines = append(lines, cp.inputStyle.Width(paletteWidth).Render(prompt))
+	prompt := " > " + inputLine
+	// Pad to exact width
+	promptPadding := contentWidth - lipgloss.Width(prompt)
+	if promptPadding > 0 {
+		prompt += strings.Repeat(" ", promptPadding)
+	}
+	inputStyled := lipgloss.NewStyle().
+		Background(lipgloss.Color("238")).
+		Foreground(lipgloss.Color("252")).
+		Render(prompt)
+	lines = append(lines, inputStyled)
 
 	// Separator
-	lines = append(lines, strings.Repeat("-", paletteWidth))
+	separator := strings.Repeat("─", contentWidth)
+	lines = append(lines, separator)
 
 	// Command list
 	maxVisible := cp.maxVisibleItems()
@@ -316,22 +320,24 @@ func (cp *CommandPalette) View() string {
 
 	for i := cp.scrollOffset; i < endIdx; i++ {
 		cmd := cp.filtered[i]
-		line := cp.renderCommandLine(cmd, paletteWidth, i == cp.selected)
+		line := cp.renderCommandLine(cmd, contentWidth, i == cp.selected)
 		lines = append(lines, line)
 	}
 
 	// Show "no results" if empty
 	if len(cp.filtered) == 0 {
-		noResults := cp.itemStyle.Width(paletteWidth).Render("No matching commands")
+		noResults := " Keine Treffer" + strings.Repeat(" ", contentWidth-14)
 		lines = append(lines, noResults)
 	}
 
 	// Scroll indicators
 	if cp.scrollOffset > 0 {
-		lines = append([]string{lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("  ...")}, lines...)
+		up := " ↑ mehr" + strings.Repeat(" ", contentWidth-7)
+		lines = append([]string{up}, lines...)
 	}
 	if endIdx < len(cp.filtered) {
-		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("  ..."))
+		down := " ↓ mehr" + strings.Repeat(" ", contentWidth-7)
+		lines = append(lines, down)
 	}
 
 	content := strings.Join(lines, "\n")
@@ -341,29 +347,31 @@ func (cp *CommandPalette) View() string {
 // renderCommandLine renders a single command line.
 func (cp *CommandPalette) renderCommandLine(cmd Command, width int, selected bool) string {
 	label := cmd.Label
-	keybind := ""
-	if cmd.Keybinding != "" {
-		keybind = cp.keybindStyle.Render(cmd.Keybinding)
+	keybind := cmd.Keybinding
+
+	// Inner width (with 1 char padding on each side)
+	innerWidth := width - 2
+
+	// Calculate padding between label and keybind
+	padding := innerWidth - lipgloss.Width(label) - lipgloss.Width(keybind)
+	if padding < 1 {
+		padding = 1
 	}
 
-	// Calculate available width for label
-	labelWidth := width - lipgloss.Width(keybind) - 4
-	if len(label) > labelWidth {
-		label = label[:labelWidth-3] + "..."
-	}
+	// Build the complete line with padding
+	line := " " + label + strings.Repeat(" ", padding) + keybind + " "
 
-	// Build line with label and keybinding
-	spacing := width - len(label) - lipgloss.Width(keybind) - 2
-	if spacing < 1 {
-		spacing = 1
-	}
-
-	line := label + strings.Repeat(" ", spacing) + keybind
-
+	// Apply style to the whole line
 	if selected {
-		return cp.selectedStyle.Width(width).Render(line)
+		return lipgloss.NewStyle().
+			Background(lipgloss.Color("62")).
+			Foreground(lipgloss.Color("230")).
+			Render(line)
 	}
-	return cp.itemStyle.Width(width).Render(line)
+	return lipgloss.NewStyle().
+		Background(lipgloss.Color("237")).
+		Foreground(lipgloss.Color("252")).
+		Render(line)
 }
 
 // HandleClick handles a click at the given position.

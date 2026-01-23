@@ -12,6 +12,15 @@ const (
 	MaxSidebarWidth     = 60
 )
 
+// OpenTabInfo contains info about an open tab for display in sidebar.
+type OpenTabInfo struct {
+	Name     string
+	Path     string
+	Modified bool
+	IsNew    bool // True if file has no path yet
+	Active   bool
+}
+
 // Sidebar represents the file explorer sidebar.
 type Sidebar struct {
 	fileTree *FileTree
@@ -23,20 +32,31 @@ type Sidebar struct {
 	selectedIndex int
 	scrollOffset  int
 
+	// Open tabs display
+	openTabs         []OpenTabInfo
+	showOpenEditors  bool
+	openEditorsCount int
+
+	// Modified files tracking
+	modifiedPaths map[string]bool
+
 	// Styles
 	titleStyle    lipgloss.Style
 	itemStyle     lipgloss.Style
 	selectedStyle lipgloss.Style
 	dirStyle      lipgloss.Style
 	borderStyle   lipgloss.Style
+	modifiedStyle lipgloss.Style
+	newFileStyle  lipgloss.Style
 }
 
 // NewSidebar creates a new sidebar.
 func NewSidebar() *Sidebar {
 	return &Sidebar{
-		fileTree: NewFileTree(),
-		width:    DefaultSidebarWidth,
-		visible:  true,
+		fileTree:      NewFileTree(),
+		width:         DefaultSidebarWidth,
+		visible:       true,
+		modifiedPaths: make(map[string]bool),
 
 		titleStyle: lipgloss.NewStyle().
 			Bold(true).
@@ -55,6 +75,11 @@ func NewSidebar() *Sidebar {
 			BorderRight(true).
 			BorderStyle(lipgloss.NormalBorder()).
 			BorderForeground(lipgloss.Color("240")),
+		modifiedStyle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("214")),
+		newFileStyle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("120")).
+			Italic(true),
 	}
 }
 
@@ -65,7 +90,14 @@ func (s *Sidebar) LoadDirectory(path string) error {
 
 // SetSize sets the sidebar dimensions.
 func (s *Sidebar) SetSize(width, height int) {
-	s.width = width
+	if width >= MinSidebarWidth {
+		s.width = width
+	}
+	s.height = height
+}
+
+// SetHeight sets the sidebar height without changing width.
+func (s *Sidebar) SetHeight(height int) {
 	s.height = height
 }
 
@@ -148,7 +180,7 @@ func (s *Sidebar) ensureVisible() {
 // ToggleSelected toggles the selected directory or returns the selected file path.
 func (s *Sidebar) ToggleSelected() string {
 	nodes := s.fileTree.GetVisibleNodes()
-	if s.selectedIndex >= len(nodes) {
+	if s.selectedIndex < 0 || s.selectedIndex >= len(nodes) {
 		return ""
 	}
 
@@ -192,6 +224,26 @@ func (s *Sidebar) Refresh() error {
 	return s.fileTree.Refresh()
 }
 
+// SetModifiedFiles sets the list of modified file paths.
+func (s *Sidebar) SetModifiedFiles(paths []string) {
+	s.modifiedPaths = make(map[string]bool)
+	for _, p := range paths {
+		s.modifiedPaths[p] = true
+	}
+}
+
+// IsModified returns whether a file path is marked as modified.
+func (s *Sidebar) IsModified(path string) bool {
+	return s.modifiedPaths[path]
+}
+
+// SetOpenTabs sets the list of open tabs for display in the sidebar.
+func (s *Sidebar) SetOpenTabs(tabs []OpenTabInfo) {
+	s.openTabs = tabs
+	s.showOpenEditors = len(tabs) > 0
+	s.openEditorsCount = len(tabs)
+}
+
 // View renders the sidebar.
 func (s *Sidebar) View() string {
 	if !s.visible {
@@ -200,14 +252,76 @@ func (s *Sidebar) View() string {
 
 	var lines []string
 	contentWidth := s.width - 2 // Account for border
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
 
 	// Title
 	title := s.titleStyle.Width(contentWidth).Render("EXPLORER")
 	lines = append(lines, title)
 
+	// Open Editors section
+	openEditorsHeight := 0
+	if s.showOpenEditors && len(s.openTabs) > 0 {
+		// Section header
+		sectionHeader := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")).
+			Width(contentWidth).
+			Render("OPEN EDITORS")
+		lines = append(lines, sectionHeader)
+		openEditorsHeight++
+
+		// List open tabs
+		for _, tab := range s.openTabs {
+			name := tab.Name
+			prefix := "  "
+
+			// Add indicators
+			if tab.Modified {
+				prefix = "● "
+			}
+			if tab.IsNew {
+				name = name + " (neu)"
+			}
+
+			line := prefix + name
+
+			// Truncate if too long
+			if len(line) > contentWidth && contentWidth > 3 {
+				line = line[:contentWidth-3] + "..."
+			} else if len(line) > contentWidth {
+				line = line[:contentWidth]
+			}
+
+			// Pad to width
+			if len(line) < contentWidth {
+				line += strings.Repeat(" ", contentWidth-len(line))
+			}
+
+			// Apply style
+			var styledLine string
+			if tab.Active {
+				styledLine = s.selectedStyle.Render(line)
+			} else if tab.IsNew {
+				styledLine = s.newFileStyle.Render(line)
+			} else if tab.Modified {
+				styledLine = s.modifiedStyle.Render(line)
+			} else {
+				styledLine = s.itemStyle.Render(line)
+			}
+
+			lines = append(lines, styledLine)
+			openEditorsHeight++
+		}
+
+		// Empty line separator
+		lines = append(lines, strings.Repeat(" ", contentWidth))
+		openEditorsHeight++
+	}
+
 	// File tree
 	nodes := s.fileTree.GetVisibleNodes()
-	contentHeight := s.height - 2 // Title + hint
+	contentHeight := s.height - 2 - openEditorsHeight // Title + hint + open editors
 
 	// Render visible nodes
 	for i := s.scrollOffset; i < len(nodes) && i < s.scrollOffset+contentHeight; i++ {
@@ -218,6 +332,11 @@ func (s *Sidebar) View() string {
 		indent := strings.Repeat("  ", depth)
 		icon := ""
 		name := node.Name
+
+		// Add modified indicator for files
+		if !node.IsDir && s.modifiedPaths[node.Path] {
+			name = "● " + name
+		}
 
 		if node.IsDir {
 			if s.fileTree.IsExpanded(node.Path) {
@@ -232,8 +351,10 @@ func (s *Sidebar) View() string {
 		line := indent + icon + name
 
 		// Truncate if too long
-		if len(line) > contentWidth {
+		if len(line) > contentWidth && contentWidth > 3 {
 			line = line[:contentWidth-3] + "..."
+		} else if len(line) > contentWidth {
+			line = line[:contentWidth]
 		}
 
 		// Pad to width
@@ -282,7 +403,7 @@ func (s *Sidebar) HandleClick(y int) string {
 	index := s.scrollOffset + y - 1
 
 	nodes := s.fileTree.GetVisibleNodes()
-	if index >= len(nodes) {
+	if index < 0 || index >= len(nodes) {
 		return ""
 	}
 

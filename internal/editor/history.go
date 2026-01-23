@@ -15,12 +15,12 @@ const (
 
 // EditAction represents a single undoable edit operation.
 type EditAction struct {
-	Type       ActionType
-	Position   int       // Buffer offset where action occurred
-	Text       string    // Text that was inserted or should be inserted on undo
-	OldText    string    // Text that was replaced/deleted (for undo)
-	Timestamp  time.Time
-	CursorPos  Position  // Cursor position before the action
+	Type      ActionType
+	Position  int    // Buffer offset where action occurred
+	Text      string // Text that was inserted or should be inserted on undo
+	OldText   string // Text that was replaced/deleted (for undo)
+	Timestamp time.Time
+	CursorPos Position // Cursor position before the action
 }
 
 // History manages undo/redo stacks for edit operations.

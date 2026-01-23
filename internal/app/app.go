@@ -31,6 +31,7 @@ type App struct {
 	// Components
 	editor         *editor.Editor
 	titleBar       *ui.TitleBar
+	tabBar         *ui.TabBar
 	statusBar      *ui.StatusBar
 	sidebar        *ui.Sidebar
 	commandPalette *ui.CommandPalette
@@ -41,12 +42,14 @@ type App struct {
 	keyBindings *keybindings.KeyBindings
 
 	// State
-	focus       FocusArea
-	width       int
-	height      int
-	quitting    bool
-	message     string
-	messageTime time.Time
+	focus           FocusArea
+	width           int
+	height          int
+	quitting        bool
+	pendingQuit     bool // True when waiting for quit confirmation
+	pendingCloseTab bool // True when waiting for close tab confirmation
+	message         string
+	messageTime     time.Time
 
 	// Clipboard
 	clipboardInit bool
@@ -59,6 +62,7 @@ func New() *App {
 	app := &App{
 		editor:         editor.NewEditor(),
 		titleBar:       ui.NewTitleBar(),
+		tabBar:         ui.NewTabBar(),
 		statusBar:      ui.NewStatusBar(),
 		sidebar:        ui.NewSidebar(),
 		commandPalette: ui.NewCommandPalette(),
@@ -142,14 +146,17 @@ func (a *App) handleResize(width, height int) {
 	a.height = height
 
 	// Calculate component sizes
-	sidebarWidth := a.sidebar.Width()
+	sidebarWidth := a.sidebar.Width() // Returns 0 when hidden
 	editorWidth := width - sidebarWidth
-	editorHeight := height - 3 // title bar + status bar + search bar
+	tabBarHeight := a.tabBar.Height()
+	editorHeight := height - 2 - tabBarHeight // title bar + status bar + tab bar
 
 	// Update component sizes
 	a.titleBar.SetWidth(width)
+	a.tabBar.SetWidth(width)
 	a.statusBar.SetWidth(width)
-	a.sidebar.SetSize(sidebarWidth, height-2) // Exclude title and status
+	// Only update sidebar height, preserve width (SetSize only for height)
+	a.sidebar.SetHeight(height - 2 - tabBarHeight) // Exclude title, status, and tab bar
 	a.editor.SetSize(editorWidth, editorHeight)
 	a.commandPalette.SetSize(width, height)
 	a.searchBar.SetWidth(width)
@@ -157,7 +164,50 @@ func (a *App) handleResize(width, height int) {
 
 // handleKeyPress handles keyboard input.
 func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Handle Escape first - closes overlays
+	// Handle pending quit confirmation
+	if a.pendingQuit {
+		switch msg.Type {
+		case tea.KeyEsc:
+			a.cancelQuit()
+			return a, nil
+		case tea.KeyCtrlS:
+			return a.saveAndQuit()
+		case tea.KeyCtrlQ:
+			// Quit without saving (handled in quit())
+			return a.quit()
+		default:
+			// Any other key cancels the quit
+			a.cancelQuit()
+			// Don't return - let the key be processed normally
+		}
+	}
+
+	// Handle pending close tab confirmation
+	if a.pendingCloseTab {
+		switch msg.Type {
+		case tea.KeyEsc:
+			a.pendingCloseTab = false
+			a.showMessage("Schließen abgebrochen", ui.MessageInfo)
+			return a, nil
+		case tea.KeyCtrlS:
+			// Save then close
+			if _, cmd := a.save(); cmd == nil {
+				a.pendingCloseTab = false
+				return a.closeTab()
+			}
+			return a, nil
+		case tea.KeyCtrlW:
+			// Force close (handled in closeTab)
+			return a.closeTab()
+		default:
+			// Any other key cancels the close
+			a.pendingCloseTab = false
+			a.showMessage("Schließen abgebrochen", ui.MessageInfo)
+			// Don't return - let the key be processed normally
+		}
+	}
+
+	// Handle Escape first - closes overlays and cancels pending actions
 	if msg.Type == tea.KeyEsc {
 		if a.commandPalette.IsVisible() {
 			a.commandPalette.Hide()
@@ -203,6 +253,27 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case keybindings.ActionQuit:
 		return a.quit()
+	case keybindings.ActionOpen:
+		a.searchBar.ShowOpen()
+		a.focus = FocusSearchBar
+		a.handleResize(a.width, a.height)
+		return a, nil
+
+	// Tab operations
+	case keybindings.ActionCloseTab:
+		return a.closeTab()
+	case keybindings.ActionNextTab:
+		a.editor.TabManager().NextTab()
+		a.highlightDirty()
+		a.handleResize(a.width, a.height)
+		return a, nil
+	case keybindings.ActionPrevTab:
+		a.editor.TabManager().PrevTab()
+		a.highlightDirty()
+		a.handleResize(a.width, a.height)
+		return a, nil
+	case keybindings.ActionSaveAll:
+		return a.saveAll()
 
 	// Edit operations
 	case keybindings.ActionUndo:
@@ -330,11 +401,30 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// View
 	case keybindings.ActionToggleSidebar:
 		a.sidebar.Toggle()
+		// Reset focus to editor if sidebar is now hidden
+		if !a.sidebar.IsVisible() {
+			a.focus = FocusEditor
+		}
 		a.handleResize(a.width, a.height)
 		return a, nil
 	case keybindings.ActionCommandPalette:
 		a.commandPalette.Show()
 		a.focus = FocusCommandPalette
+		return a, nil
+	case keybindings.ActionFocusExplorer:
+		// Toggle focus between editor and explorer
+		if a.focus == FocusEditor {
+			// Show sidebar if hidden, then focus it
+			if !a.sidebar.IsVisible() {
+				a.sidebar.Toggle()
+				a.handleResize(a.width, a.height)
+			}
+			a.focus = FocusSidebar
+			a.showMessage("Fokus: Explorer", ui.MessageInfo)
+		} else {
+			a.focus = FocusEditor
+			a.showMessage("Fokus: Editor", ui.MessageInfo)
+		}
 		return a, nil
 
 	// Text input
@@ -357,6 +447,12 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		for _, r := range msg.Runes {
 			a.editor.InsertRune(r)
 		}
+		return a, nil
+	}
+
+	// Handle space key (Bubble Tea treats it as special key, not rune)
+	if msg.Type == tea.KeySpace {
+		a.editor.InsertRune(' ')
 		return a, nil
 	}
 
@@ -406,7 +502,8 @@ func (a *App) handleCommandPaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (a *App) handleSearchBarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyEnter:
-		if a.searchBar.Mode() == ui.SearchModeGoToLine {
+		switch a.searchBar.Mode() {
+		case ui.SearchModeGoToLine:
 			lineNum := a.searchBar.LineNumber()
 			if lineNum > 0 {
 				a.editor.GoToLine(lineNum)
@@ -414,7 +511,32 @@ func (a *App) handleSearchBarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.searchBar.Hide()
 			a.focus = FocusEditor
 			a.handleResize(a.width, a.height)
-		} else {
+		case ui.SearchModeSaveAs:
+			filePath := a.searchBar.FilePath()
+			if filePath != "" {
+				if err := a.editor.SaveAs(filePath); err != nil {
+					a.showMessage("Fehler beim Speichern: "+err.Error(), ui.MessageError)
+				} else {
+					a.showMessage("Gespeichert: "+filepath.Base(filePath), ui.MessageInfo)
+					a.sidebar.Refresh()
+				}
+			}
+			a.searchBar.Hide()
+			a.focus = FocusEditor
+			a.handleResize(a.width, a.height)
+		case ui.SearchModeOpen:
+			filePath := a.searchBar.FilePath()
+			if filePath != "" {
+				if err := a.editor.LoadFile(filePath); err != nil {
+					a.showMessage("Fehler beim Öffnen: "+err.Error(), ui.MessageError)
+				} else {
+					a.showMessage("Geöffnet: "+filepath.Base(filePath), ui.MessageInfo)
+				}
+			}
+			a.searchBar.Hide()
+			a.focus = FocusEditor
+			a.handleResize(a.width, a.height)
+		default:
 			// Find next
 			text := a.searchBar.SearchText()
 			if text != "" {
@@ -433,19 +555,46 @@ func (a *App) handleSearchBarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.searchBar.MoveRight()
 	case tea.KeyRunes:
 		a.searchBar.Input(string(msg.Runes))
-		// Live search
-		if a.searchBar.Mode() != ui.SearchModeGoToLine {
+		// Live search (only for find/replace modes)
+		mode := a.searchBar.Mode()
+		if mode == ui.SearchModeFind || mode == ui.SearchModeReplace {
 			text := a.searchBar.SearchText()
 			if text != "" {
 				a.editor.Find(text, a.searchBar.IsCaseSensitive())
 			}
 		}
+	case tea.KeySpace:
+		a.searchBar.Input(" ")
 	}
 	return a, nil
 }
 
 // handleSidebarKey handles key input when sidebar is focused.
 func (a *App) handleSidebarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Check for global shortcuts first
+	action := a.keyBindings.Lookup(msg)
+	switch action {
+	case keybindings.ActionToggleSidebar:
+		a.sidebar.Toggle()
+		if !a.sidebar.IsVisible() {
+			a.focus = FocusEditor
+		}
+		a.handleResize(a.width, a.height)
+		return a, nil
+	case keybindings.ActionQuit:
+		return a.quit()
+	case keybindings.ActionCommandPalette:
+		a.commandPalette.Show()
+		a.focus = FocusCommandPalette
+		return a, nil
+	case keybindings.ActionFocusExplorer:
+		// Toggle back to editor
+		a.focus = FocusEditor
+		a.showMessage("Fokus: Editor (von Sidebar)", ui.MessageInfo)
+		return a, nil
+	}
+
+	// Sidebar-specific keys
 	switch msg.Type {
 	case tea.KeyUp:
 		a.sidebar.MoveUp()
@@ -461,18 +610,40 @@ func (a *App) handleSidebarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyTab, tea.KeyRight:
 		a.focus = FocusEditor
+	case tea.KeyLeft:
+		// Collapse current directory or move focus to editor
+		a.focus = FocusEditor
 	}
 	return a, nil
 }
 
 // handleMouse handles mouse events.
 func (a *App) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	tabBarHeight := a.tabBar.Height()
+
 	switch msg.Action {
 	case tea.MouseActionPress:
+		// Check if click is in tab bar (row 1 if visible)
+		if tabBarHeight > 0 && msg.Y == 1 {
+			tabIdx := a.tabBar.HandleClick(msg.X)
+			if tabIdx >= 0 {
+				a.editor.TabManager().SwitchTab(tabIdx)
+				a.highlightDirty()
+				a.handleResize(a.width, a.height)
+			}
+			return a, nil
+		}
+
+		// Adjust Y for tab bar
+		adjustedY := msg.Y - 1 - tabBarHeight // Adjust for title bar and tab bar
+		if adjustedY < 0 {
+			return a, nil // Click on title bar or tab bar, ignore
+		}
+
 		// Check if click is in sidebar
 		if a.sidebar.IsVisible() && msg.X < a.sidebar.Width() {
 			a.focus = FocusSidebar
-			path := a.sidebar.HandleClick(msg.Y - 1) // Adjust for title bar
+			path := a.sidebar.HandleClick(adjustedY)
 			if path != "" {
 				if err := a.editor.LoadFile(path); err != nil {
 					a.showMessage("Error: "+err.Error(), ui.MessageError)
@@ -485,15 +656,17 @@ func (a *App) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// Click in editor area
 		a.focus = FocusEditor
 		editorX := msg.X - a.sidebar.Width()
-		editorY := msg.Y - 1 // Adjust for title bar
-		shift := msg.Ctrl    // Bubble Tea doesn't have Shift detection in mouse, use Ctrl as workaround
+		editorY := adjustedY
+		shift := msg.Ctrl // Bubble Tea doesn't have Shift detection in mouse, use Ctrl as workaround
 		a.editor.HandleClick(editorX, editorY, shift)
 
 	case tea.MouseActionMotion:
 		if msg.Button == tea.MouseButtonLeft {
 			editorX := msg.X - a.sidebar.Width()
-			editorY := msg.Y - 1
-			a.editor.HandleDrag(editorX, editorY)
+			editorY := msg.Y - 1 - tabBarHeight
+			if editorY >= 0 {
+				a.editor.HandleDrag(editorX, editorY)
+			}
 		}
 
 	case tea.MouseActionRelease:
@@ -580,6 +753,21 @@ func (a *App) executeCommand(id string) (tea.Model, tea.Cmd) {
 	case "view.commandPalette":
 		a.commandPalette.Show()
 		a.focus = FocusCommandPalette
+	case "file.saveAs":
+		a.searchBar.ShowSaveAs(a.editor.Filepath())
+		a.focus = FocusSearchBar
+		a.handleResize(a.width, a.height)
+	case "file.open":
+		a.searchBar.ShowOpen()
+		a.focus = FocusSearchBar
+		a.handleResize(a.width, a.height)
+	case "file.close":
+		a.editor.NewFile()
+		a.showMessage("Datei geschlossen", ui.MessageInfo)
+	case "nav.goToStart":
+		a.editor.MoveCursor("bufferStart", false)
+	case "nav.goToEnd":
+		a.editor.MoveCursor("bufferEnd", false)
 	}
 	return a, nil
 }
@@ -599,15 +787,134 @@ func (a *App) save() (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+// saveAll saves all modified tabs.
+func (a *App) saveAll() (tea.Model, tea.Cmd) {
+	if err := a.editor.TabManager().SaveAll(); err != nil {
+		a.showMessage("Fehler beim Speichern: "+err.Error(), ui.MessageError)
+	} else {
+		a.showMessage("Alle Dateien gespeichert", ui.MessageInfo)
+	}
+	return a, nil
+}
+
+// closeTab closes the current tab.
+func (a *App) closeTab() (tea.Model, tea.Cmd) {
+	tab := a.editor.TabManager().ActiveTab()
+	if tab == nil {
+		return a, nil
+	}
+
+	if tab.Modified() {
+		// Second Ctrl+W forces close
+		if a.pendingCloseTab {
+			a.pendingCloseTab = false
+			a.editor.TabManager().CloseActiveTab()
+			a.highlightDirty()
+			a.handleResize(a.width, a.height)
+			a.showMessage("Tab verworfen", ui.MessageInfo)
+			return a, nil
+		}
+
+		// First Ctrl+W - show confirmation
+		a.pendingCloseTab = true
+		a.showMessage("Ungespeicherte Änderungen! Ctrl+S: Speichern | Ctrl+W: Verwerfen | Esc: Abbrechen", ui.MessageWarning)
+		return a, nil
+	}
+
+	a.pendingCloseTab = false
+	a.editor.TabManager().CloseActiveTab()
+	a.highlightDirty()
+	a.handleResize(a.width, a.height)
+	a.showMessage("Tab geschlossen", ui.MessageInfo)
+	return a, nil
+}
+
+// highlightDirty marks highlighting as needing refresh.
+func (a *App) highlightDirty() {
+	a.editor.MarkHighlightDirty()
+}
+
+// updateTabBar updates the tab bar with current tab information.
+func (a *App) updateTabBar() {
+	tm := a.editor.TabManager()
+	tabs := tm.Tabs()
+	activeIdx := tm.ActiveIndex()
+
+	var tabInfos []ui.TabInfo
+	for i, tab := range tabs {
+		tabInfos = append(tabInfos, ui.TabInfo{
+			Name:     tab.Name(),
+			Path:     tab.Filepath(),
+			Modified: tab.Modified(),
+			Active:   i == activeIdx,
+		})
+	}
+	a.tabBar.SetTabs(tabInfos)
+}
+
+// updateOpenEditors updates the sidebar open editors section.
+func (a *App) updateOpenEditors() {
+	tm := a.editor.TabManager()
+	tabs := tm.Tabs()
+	activeIdx := tm.ActiveIndex()
+
+	var openTabs []ui.OpenTabInfo
+	for i, tab := range tabs {
+		openTabs = append(openTabs, ui.OpenTabInfo{
+			Name:     tab.Name(),
+			Path:     tab.Filepath(),
+			Modified: tab.Modified(),
+			IsNew:    tab.Filepath() == "", // New file if no path
+			Active:   i == activeIdx,
+		})
+	}
+	a.sidebar.SetOpenTabs(openTabs)
+}
+
 // quit attempts to quit the application.
 func (a *App) quit() (tea.Model, tea.Cmd) {
-	if a.editor.Modified() {
-		a.showMessage("Unsaved changes! Press Ctrl+Q again to quit without saving", ui.MessageWarning)
-		// In a real implementation, we'd track double-press
-		// For now, just warn and allow quit
+	// Check if any tab has unsaved changes
+	if !a.editor.TabManager().IsModified() {
+		a.quitting = true
+		return a, tea.Quit
 	}
+
+	// Unsaved changes - check if already pending
+	if a.pendingQuit {
+		// Second Ctrl+Q - quit without saving
+		a.quitting = true
+		return a, tea.Quit
+	}
+
+	// First Ctrl+Q with unsaved changes - show warning
+	a.pendingQuit = true
+	modifiedCount := len(a.editor.TabManager().GetModifiedTabs())
+	a.showMessage(fmt.Sprintf("%d ungespeicherte Tab(s)! Ctrl+S: Speichern & Beenden | Ctrl+Q: Verwerfen | Esc: Abbrechen", modifiedCount), ui.MessageWarning)
+	return a, nil
+}
+
+// saveAndQuit saves the file and quits.
+func (a *App) saveAndQuit() (tea.Model, tea.Cmd) {
+	if a.editor.Filepath() == "" {
+		a.showMessage("Kein Dateiname - nutze Save As", ui.MessageWarning)
+		a.pendingQuit = false
+		return a, nil
+	}
+
+	if err := a.editor.Save(); err != nil {
+		a.showMessage("Fehler beim Speichern: "+err.Error(), ui.MessageError)
+		a.pendingQuit = false
+		return a, nil
+	}
+
 	a.quitting = true
 	return a, tea.Quit
+}
+
+// cancelQuit cancels the pending quit.
+func (a *App) cancelQuit() {
+	a.pendingQuit = false
+	a.showMessage("Beenden abgebrochen", ui.MessageInfo)
 }
 
 // showMessage displays a status message.
@@ -644,6 +951,16 @@ func (a *App) View() string {
 	// Title bar
 	a.titleBar.SetFile(a.editor.Filepath(), a.editor.Modified())
 	sections = append(sections, a.titleBar.View())
+
+	// Tab bar (only shown when multiple tabs)
+	a.updateTabBar()
+	if tabBarView := a.tabBar.View(); tabBarView != "" {
+		sections = append(sections, tabBarView)
+	}
+
+	// Update sidebar modified indicators and open editors section
+	a.sidebar.SetModifiedFiles(a.editor.TabManager().GetModifiedPaths())
+	a.updateOpenEditors()
 
 	// Main content area (sidebar + editor)
 	var mainContent string
@@ -703,54 +1020,60 @@ func (a *App) View() string {
 	return view
 }
 
-// overlayView overlays a smaller view on top of the main view.
+// overlayView overlays a smaller view on top of the main view using lipgloss.Place.
 func (a *App) overlayView(base, overlay string) string {
+	// Use lipgloss.Place to center the overlay horizontally and position it near the top
+	// First, place the overlay in a full-screen sized box
+	placed := lipgloss.Place(
+		a.width,
+		a.height,
+		lipgloss.Center, // horizontal center
+		lipgloss.Top,    // vertical top
+		overlay,
+		lipgloss.WithWhitespaceChars(" "),
+	)
+
+	// Now we need to composite: show base where overlay is transparent
+	// Since lipgloss.Place fills with spaces, we merge line by line
 	baseLines := strings.Split(base, "\n")
-	overlayLines := strings.Split(overlay, "\n")
+	placedLines := strings.Split(placed, "\n")
 
-	// Calculate position (center horizontally, near top vertically)
-	overlayWidth := 0
-	for _, line := range overlayLines {
-		w := lipgloss.Width(line)
-		if w > overlayWidth {
-			overlayWidth = w
+	result := make([]string, len(baseLines))
+	for i, baseLine := range baseLines {
+		if i < len(placedLines) {
+			// Check if placed line has content (non-space characters after stripping ANSI)
+			placedLine := placedLines[i]
+			if strings.TrimSpace(stripAnsi(placedLine)) != "" {
+				result[i] = placedLine
+			} else {
+				result[i] = baseLine
+			}
+		} else {
+			result[i] = baseLine
 		}
 	}
 
-	startX := (a.width - overlayWidth) / 2
-	startY := 3 // Below title bar
+	return strings.Join(result, "\n")
+}
 
-	if startX < 0 {
-		startX = 0
-	}
-
-	// Overlay the palette
-	for i, overlayLine := range overlayLines {
-		lineIdx := startY + i
-		if lineIdx < len(baseLines) {
-			baseLine := baseLines[lineIdx]
-			baseRunes := []rune(baseLine)
-
-			// Pad base line if needed
-			for len(baseRunes) < startX {
-				baseRunes = append(baseRunes, ' ')
-			}
-
-			// Insert overlay
-			overlayRunes := []rune(overlayLine)
-			newLine := string(baseRunes[:startX]) + string(overlayRunes)
-
-			// Add rest of base line if there's room
-			endX := startX + len(overlayRunes)
-			if endX < len(baseRunes) {
-				newLine += string(baseRunes[endX:])
-			}
-
-			baseLines[lineIdx] = newLine
+// stripAnsi removes ANSI escape codes from a string for comparison.
+func stripAnsi(s string) string {
+	var result strings.Builder
+	inEscape := false
+	for _, r := range s {
+		if r == '\x1b' {
+			inEscape = true
+			continue
 		}
+		if inEscape {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+				inEscape = false
+			}
+			continue
+		}
+		result.WriteRune(r)
 	}
-
-	return strings.Join(baseLines, "\n")
+	return result.String()
 }
 
 // Run runs the application.
