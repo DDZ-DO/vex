@@ -72,10 +72,16 @@ func New() *App {
 		focus:          FocusEditor,
 	}
 
-	// Initialize clipboard
-	if err := clipboard.Init(); err == nil {
-		app.clipboardInit = true
-	}
+	// Initialize clipboard with panic recovery for headless systems
+	// (clipboard.Init may panic when CGO_ENABLED=0 or no X11/Wayland)
+	func() {
+		defer func() {
+			recover()
+		}()
+		if err := clipboard.Init(); err == nil {
+			app.clipboardInit = true
+		}
+	}()
 
 	// Set initial sidebar visibility from config
 	if !cfg.ShowSidebar {
