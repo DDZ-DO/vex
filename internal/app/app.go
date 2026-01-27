@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	stdfilepath "path/filepath"
 	"strings"
 	"time"
 
@@ -101,10 +101,7 @@ func (a *App) LoadFile(filepath string) error {
 	// Load directory into sidebar
 	dir := filepath
 	if info, err := os.Stat(filepath); err == nil && !info.IsDir() {
-		dir = filepath[:len(filepath)-len(info.Name())-1]
-		if dir == "" {
-			dir = "."
-		}
+		dir = stdfilepath.Dir(filepath)
 	}
 	a.sidebar.LoadDirectory(dir)
 
@@ -523,7 +520,7 @@ func (a *App) handleSearchBarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if err := a.editor.SaveAs(filePath); err != nil {
 					a.showMessage("Fehler beim Speichern: "+err.Error(), ui.MessageError)
 				} else {
-					a.showMessage("Gespeichert: "+filepath.Base(filePath), ui.MessageInfo)
+					a.showMessage("Gespeichert: "+stdfilepath.Base(filePath), ui.MessageInfo)
 					a.sidebar.Refresh()
 				}
 			}
@@ -536,7 +533,7 @@ func (a *App) handleSearchBarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if err := a.editor.LoadFile(filePath); err != nil {
 					a.showMessage("Fehler beim Öffnen: "+err.Error(), ui.MessageError)
 				} else {
-					a.showMessage("Geöffnet: "+filepath.Base(filePath), ui.MessageInfo)
+					a.showMessage("Geöffnet: "+stdfilepath.Base(filePath), ui.MessageInfo)
 				}
 			}
 			a.searchBar.Hide()
@@ -788,7 +785,7 @@ func (a *App) save() (tea.Model, tea.Cmd) {
 	if err := a.editor.Save(); err != nil {
 		a.showMessage("Error saving: "+err.Error(), ui.MessageError)
 	} else {
-		a.showMessage("Saved "+filepath.Base(a.editor.Filepath()), ui.MessageInfo)
+		a.showMessage("Saved "+stdfilepath.Base(a.editor.Filepath()), ui.MessageInfo)
 	}
 	return a, nil
 }
