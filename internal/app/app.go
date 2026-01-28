@@ -95,7 +95,12 @@ func (a *App) LoadFile(filepath string) error {
 	// Load directory into sidebar
 	dir := filepath
 	if info, err := os.Stat(filepath); err == nil && !info.IsDir() {
-		dir = filepath[:len(filepath)-len(info.Name())-1]
+		// Handle case where filepath is just a filename without path
+		if len(filepath) > len(info.Name()) {
+			dir = filepath[:len(filepath)-len(info.Name())-1]
+		} else {
+			dir = "."
+		}
 		if dir == "" {
 			dir = "."
 		}
