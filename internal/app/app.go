@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
-	stdfilepath "path/filepath"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -76,7 +76,16 @@ func New() *App {
 	// (clipboard.Init may panic when CGO_ENABLED=0 or no X11/Wayland)
 	func() {
 		defer func() {
-			recover()
+			if r := recover(); r != nil {
+				// Only suppress clipboard/display-related panics
+				msg := strings.ToLower(fmt.Sprint(r))
+				if !strings.Contains(msg, "clipboard") &&
+					!strings.Contains(msg, "display") &&
+					!strings.Contains(msg, "x11") &&
+					!strings.Contains(msg, "wayland") {
+					panic(r) // Re-panic unexpected errors
+				}
+			}
 		}()
 		if err := clipboard.Init(); err == nil {
 			app.clipboardInit = true
@@ -92,16 +101,16 @@ func New() *App {
 }
 
 // LoadFile loads a file into the editor.
-func (a *App) LoadFile(filepath string) error {
-	err := a.editor.LoadFile(filepath)
+func (a *App) LoadFile(path string) error {
+	err := a.editor.LoadFile(path)
 	if err != nil {
 		return err
 	}
 
 	// Load directory into sidebar
-	dir := filepath
-	if info, err := os.Stat(filepath); err == nil && !info.IsDir() {
-		dir = stdfilepath.Dir(filepath)
+	dir := path
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		dir = filepath.Dir(path)
 	}
 	a.sidebar.LoadDirectory(dir)
 
@@ -520,7 +529,7 @@ func (a *App) handleSearchBarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if err := a.editor.SaveAs(filePath); err != nil {
 					a.showMessage("Fehler beim Speichern: "+err.Error(), ui.MessageError)
 				} else {
-					a.showMessage("Gespeichert: "+stdfilepath.Base(filePath), ui.MessageInfo)
+					a.showMessage("Gespeichert: "+filepath.Base(filePath), ui.MessageInfo)
 					a.sidebar.Refresh()
 				}
 			}
@@ -533,7 +542,7 @@ func (a *App) handleSearchBarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if err := a.editor.LoadFile(filePath); err != nil {
 					a.showMessage("Fehler beim Öffnen: "+err.Error(), ui.MessageError)
 				} else {
-					a.showMessage("Geöffnet: "+stdfilepath.Base(filePath), ui.MessageInfo)
+					a.showMessage("Geöffnet: "+filepath.Base(filePath), ui.MessageInfo)
 				}
 			}
 			a.searchBar.Hide()
@@ -785,7 +794,7 @@ func (a *App) save() (tea.Model, tea.Cmd) {
 	if err := a.editor.Save(); err != nil {
 		a.showMessage("Error saving: "+err.Error(), ui.MessageError)
 	} else {
-		a.showMessage("Saved "+stdfilepath.Base(a.editor.Filepath()), ui.MessageInfo)
+		a.showMessage("Saved "+filepath.Base(a.editor.Filepath()), ui.MessageInfo)
 	}
 	return a, nil
 }
