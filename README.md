@@ -17,18 +17,24 @@ A modern terminal text editor with intuitive keybindings.
 
 ## Installation
 
-### From Source
+### Quick Install (Linux/macOS)
 
 ```bash
-git clone https://github.com/DDZ-DO/vex.git
-cd vex
-make install
+curl -fsSL https://raw.githubusercontent.com/DDZ-DO/vex/main/install.sh | bash
 ```
 
 ### Go Install
 
 ```bash
 go install github.com/DDZ-DO/vex/cmd/vex@latest
+```
+
+### From Source
+
+```bash
+git clone https://github.com/DDZ-DO/vex.git
+cd vex
+make install
 ```
 
 ## Usage
