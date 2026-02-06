@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -83,7 +84,9 @@ func New() *App {
 					!strings.Contains(msg, "display") &&
 					!strings.Contains(msg, "x11") &&
 					!strings.Contains(msg, "wayland") {
-					panic(r) // Re-panic unexpected errors
+					// Log stack trace before re-panicking to preserve debug info
+					fmt.Fprintf(os.Stderr, "unexpected panic during clipboard init: %v\n%s", r, debug.Stack())
+					panic(r)
 				}
 			}
 		}()
