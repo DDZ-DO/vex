@@ -668,13 +668,18 @@ func (e *Editor) TripleClick(x, y int) {
 
 // Save saves the buffer to its file.
 func (e *Editor) Save() error {
-	return e.buffer().Save()
+	err := e.buffer().Save()
+	if err == nil {
+		e.activeTab().MarkSaved()
+	}
+	return err
 }
 
 // SaveAs saves the buffer to a new file.
 func (e *Editor) SaveAs(filepath string) error {
 	err := e.buffer().SaveAs(filepath)
 	if err == nil {
+		e.activeTab().MarkSaved()
 		e.highlighter().SetLanguageFromPath(filepath)
 		e.highlightDirty = true
 	}
@@ -683,7 +688,7 @@ func (e *Editor) SaveAs(filepath string) error {
 
 // Modified returns whether the buffer has unsaved changes.
 func (e *Editor) Modified() bool {
-	return e.buffer().Modified()
+	return e.activeTab().Modified()
 }
 
 // Filepath returns the current file path.

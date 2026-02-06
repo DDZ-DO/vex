@@ -100,8 +100,14 @@ func (ts *TabState) Filepath() string {
 }
 
 // Modified returns whether the buffer has unsaved changes.
+// Uses history save-point tracking for accurate detection after undo/redo.
 func (ts *TabState) Modified() bool {
-	return ts.buffer.Modified()
+	return !ts.history.IsAtSavePoint()
+}
+
+// MarkSaved marks the current state as saved.
+func (ts *TabState) MarkSaved() {
+	ts.history.MarkSaved()
 }
 
 // Name returns a display name for the tab.

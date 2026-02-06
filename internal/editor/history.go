@@ -25,19 +25,21 @@ type EditAction struct {
 
 // History manages undo/redo stacks for edit operations.
 type History struct {
-	undoStack    []EditAction
-	redoStack    []EditAction
-	maxSize      int
-	groupTimeout time.Duration // Time window for grouping actions
+	undoStack       []EditAction
+	redoStack       []EditAction
+	maxSize         int
+	groupTimeout    time.Duration // Time window for grouping actions
+	savedUndoCount  int           // Undo stack size at last save (-1 if never saved or unreachable)
 }
 
 // NewHistory creates a new history with the specified max size.
 func NewHistory(maxSize int) *History {
 	return &History{
-		undoStack:    make([]EditAction, 0, maxSize),
-		redoStack:    make([]EditAction, 0, maxSize),
-		maxSize:      maxSize,
-		groupTimeout: 500 * time.Millisecond,
+		undoStack:      make([]EditAction, 0, maxSize),
+		redoStack:      make([]EditAction, 0, maxSize),
+		maxSize:        maxSize,
+		groupTimeout:   500 * time.Millisecond,
+		savedUndoCount: 0, // Empty buffer is considered "saved"
 	}
 }
 
@@ -47,6 +49,10 @@ func (h *History) Push(action EditAction) {
 	action.Timestamp = time.Now()
 
 	// Clear redo stack on new action
+	// If save point was in redo stack, it's now unreachable
+	if len(h.redoStack) > 0 && h.savedUndoCount > len(h.undoStack) {
+		h.savedUndoCount = -1 // Save point is now unreachable
+	}
 	h.redoStack = h.redoStack[:0]
 
 	// Try to merge with previous action
@@ -64,6 +70,12 @@ func (h *History) Push(action EditAction) {
 	// Trim if over max size
 	if len(h.undoStack) > h.maxSize {
 		h.undoStack = h.undoStack[1:]
+		// Adjust save point (it shifted by 1, or became unreachable)
+		if h.savedUndoCount > 0 {
+			h.savedUndoCount--
+		} else if h.savedUndoCount == 0 {
+			h.savedUndoCount = -1 // Save point trimmed away
+		}
 	}
 }
 
@@ -157,6 +169,17 @@ func (h *History) CanRedo() bool {
 func (h *History) Clear() {
 	h.undoStack = h.undoStack[:0]
 	h.redoStack = h.redoStack[:0]
+	h.savedUndoCount = 0
+}
+
+// MarkSaved marks the current position as the save point.
+func (h *History) MarkSaved() {
+	h.savedUndoCount = len(h.undoStack)
+}
+
+// IsAtSavePoint returns true if the current state matches the last saved state.
+func (h *History) IsAtSavePoint() bool {
+	return h.savedUndoCount >= 0 && len(h.undoStack) == h.savedUndoCount
 }
 
 // UndoCount returns the number of actions in the undo stack.
