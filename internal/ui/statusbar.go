@@ -19,6 +19,7 @@ type StatusBar struct {
 	encoding   string
 	lineEnding string
 	tabWidth   int
+	version    string
 
 	// Message
 	message     string
@@ -99,6 +100,11 @@ func (s *StatusBar) SetTabWidth(tabWidth int) {
 	s.tabWidth = tabWidth
 }
 
+// SetVersion sets the version string to display.
+func (s *StatusBar) SetVersion(version string) {
+	s.version = version
+}
+
 // SetMessage sets a temporary message to display.
 func (s *StatusBar) SetMessage(message string, msgType MessageType) {
 	s.message = message
@@ -121,9 +127,13 @@ func (s *StatusBar) View() string {
 	// Build left side: position info
 	position := fmt.Sprintf(" Ln %d, Col %d", s.line+1, s.column+1)
 
-	// Build right side: language, encoding, line ending, tab width, help hint
-	right := fmt.Sprintf("%s | %s | %s | Spaces: %d  Ctrl+P: Commands ",
-		s.language, s.encoding, s.lineEnding, s.tabWidth)
+	// Build right side: language, encoding, line ending, tab width, version
+	versionStr := ""
+	if s.version != "" {
+		versionStr = " | vex " + s.version
+	}
+	right := fmt.Sprintf("%s | %s | %s | Spaces: %d%s ",
+		s.language, s.encoding, s.lineEnding, s.tabWidth, versionStr)
 
 	// Calculate spacing
 	spacing := s.width - lipgloss.Width(position) - lipgloss.Width(right)

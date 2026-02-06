@@ -35,7 +35,7 @@ func main() {
 	}
 
 	// Run the editor
-	if err := app.Run(filepath, line); err != nil {
+	if err := app.RunWithVersion(filepath, line, version); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

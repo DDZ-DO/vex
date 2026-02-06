@@ -1093,7 +1093,17 @@ func stripAnsi(s string) string {
 
 // Run runs the application.
 func Run(filepath string, line int) error {
+	return RunWithVersion(filepath, line, "")
+}
+
+// RunWithVersion runs the application with version info displayed in status bar.
+func RunWithVersion(filepath string, line int, version string) error {
 	app := New()
+
+	// Set version in status bar
+	if version != "" {
+		app.statusBar.SetVersion(version)
+	}
 
 	// Load file if specified
 	if filepath != "" {
