@@ -275,6 +275,25 @@ func (h *Highlighter) styleForToken(tokenType chroma.TokenType) lipgloss.Style {
 		tokenType == chroma.NameException:
 		return h.theme.Type
 
+	case tokenType == chroma.NameTag ||
+		tokenType == chroma.NameAttribute:
+		return h.theme.Keyword
+
+	case tokenType == chroma.NameConstant ||
+		tokenType == chroma.NameVariable ||
+		tokenType == chroma.NameVariableClass ||
+		tokenType == chroma.NameVariableGlobal ||
+		tokenType == chroma.NameVariableInstance ||
+		tokenType == chroma.NameVariableMagic:
+		return h.theme.Name
+
+	case tokenType == chroma.NameLabel ||
+		tokenType == chroma.NameNamespace:
+		return h.theme.Type
+
+	case tokenType == chroma.LiteralDate:
+		return h.theme.Number
+
 	case tokenType == chroma.String ||
 		tokenType == chroma.StringAffix ||
 		tokenType == chroma.StringBacktick ||
