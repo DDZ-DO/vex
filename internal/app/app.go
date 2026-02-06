@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -72,10 +73,27 @@ func New() *App {
 		focus:          FocusEditor,
 	}
 
-	// Initialize clipboard
-	if err := clipboard.Init(); err == nil {
-		app.clipboardInit = true
-	}
+	// Initialize clipboard with panic recovery for headless systems
+	// (clipboard.Init may panic when CGO_ENABLED=0 or no X11/Wayland)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Only suppress clipboard/display-related panics
+				msg := strings.ToLower(fmt.Sprint(r))
+				if !strings.Contains(msg, "clipboard") &&
+					!strings.Contains(msg, "display") &&
+					!strings.Contains(msg, "x11") &&
+					!strings.Contains(msg, "wayland") {
+					// Log stack trace before re-panicking to preserve debug info
+					fmt.Fprintf(os.Stderr, "unexpected panic during clipboard init: %v\n%s", r, debug.Stack())
+					panic(r)
+				}
+			}
+		}()
+		if err := clipboard.Init(); err == nil {
+			app.clipboardInit = true
+		}
+	}()
 
 	// Set initial sidebar visibility from config
 	if !cfg.ShowSidebar {
@@ -86,24 +104,16 @@ func New() *App {
 }
 
 // LoadFile loads a file into the editor.
-func (a *App) LoadFile(filepath string) error {
-	err := a.editor.LoadFile(filepath)
+func (a *App) LoadFile(path string) error {
+	err := a.editor.LoadFile(path)
 	if err != nil {
 		return err
 	}
 
 	// Load directory into sidebar
-	dir := filepath
-	if info, err := os.Stat(filepath); err == nil && !info.IsDir() {
-		// Handle case where filepath is just a filename without path
-		if len(filepath) > len(info.Name()) {
-			dir = filepath[:len(filepath)-len(info.Name())-1]
-		} else {
-			dir = "."
-		}
-		if dir == "" {
-			dir = "."
-		}
+	dir := path
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		dir = filepath.Dir(path)
 	}
 	a.sidebar.LoadDirectory(dir)
 
